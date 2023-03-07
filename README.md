@@ -1,3 +1,10 @@
+### 改写了Viper增加了一点小功能
+1. 支持多配置中心文件加载
+2. 支持配置中心文件动态修改配置对象
+3. 支持配置文件中使用占位符，仅支持值来自系统环境变量
+
+---
+
 > ## Viper v2 feedback
 > Viper is heading towards v2 and we would love to hear what _**you**_ would like to see in it. Share your thoughts here: https://forms.gle/R6faU74qPRPAzchZ9
 >

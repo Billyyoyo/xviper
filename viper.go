@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,6 +61,10 @@ func (e ConfigMarshalError) Error() string {
 	return fmt.Sprintf("While marshaling config: %s", e.err.Error())
 }
 
+const (
+	PLACEHOLDER = "\\$\\{(.)+\\}"
+)
+
 var v *Viper
 
 type RemoteResponse struct {
@@ -75,6 +80,11 @@ type remoteConfigFactory interface {
 	Get(rp RemoteProvider) (io.Reader, error)
 	Watch(rp RemoteProvider) (io.Reader, error)
 	WatchChannel(rp RemoteProvider) (<-chan *RemoteResponse, chan bool)
+}
+
+type Refreshable interface {
+	CanRefresh() bool
+	KeyName() string
 }
 
 // RemoteConfig is optional, see the remote package
@@ -179,6 +189,7 @@ func DecodeHook(hook mapstructure.DecodeHookFunc) DecoderConfigOption {
 //
 // Note: Vipers are not safe for concurrent Get() and Set() operations.
 type Viper struct {
+	lock sync.Mutex
 	// Delimiter that separates a list of keys
 	// used to access a nested value in one go
 	keyDelim string
@@ -217,6 +228,8 @@ type Viper struct {
 	typeByDefValue bool
 
 	onConfigChange func(fsnotify.Event)
+
+	refreshEntrys []Refreshable
 
 	logger Logger
 
@@ -388,6 +401,7 @@ type defaultRemoteProvider struct {
 	endpoint      string
 	path          string
 	secretKeyring string
+	kv            map[string]interface{}
 }
 
 func (rp defaultRemoteProvider) Provider() string {
@@ -1097,6 +1111,11 @@ func (v *Viper) UnmarshalKey(key string, rawVal interface{}, opts ...DecoderConf
 	return decode(v.Get(key), defaultDecoderConfig(rawVal, opts...))
 }
 
+func (v *Viper) UnmarshalWithRefresh(entry Refreshable, opts ...DecoderConfigOption) error {
+	v.refreshEntrys = append(v.refreshEntrys, entry)
+	return decode(v.Get(entry.KeyName()), defaultDecoderConfig(entry, opts...))
+}
+
 // Unmarshal unmarshals the config into a Struct. Make sure that the tags
 // on the fields of the structure are properly set.
 func Unmarshal(rawVal interface{}, opts ...DecoderConfigOption) error {
@@ -1721,7 +1740,8 @@ func (v *Viper) unmarshalReader(in io.Reader, c map[string]interface{}) error {
 
 	switch format := strings.ToLower(v.getConfigType()); format {
 	case "yaml", "yml", "json", "toml", "hcl", "tfvars", "ini", "properties", "props", "prop", "dotenv", "env":
-		err := v.decoderRegistry.Decode(format, buf.Bytes(), c)
+		bs := v.handlePlaceHolder(buf.Bytes())
+		err := v.decoderRegistry.Decode(format, bs, c)
 		if err != nil {
 			return ConfigParseError{err}
 		}
@@ -1729,6 +1749,25 @@ func (v *Viper) unmarshalReader(in io.Reader, c map[string]interface{}) error {
 
 	insensitiviseMap(c)
 	return nil
+}
+
+// just replace from env
+func (v *Viper) handlePlaceHolder(bs []byte) []byte {
+	text := string(bs)
+	exp, _ := regexp.Compile(PLACEHOLDER)
+	holders := exp.FindAllString(text, -1)
+	for _, holder := range holders {
+		kv := strings.SplitN(holder[2:len(holder)-1], ":", 2)
+		if strings.ToLower(kv[0]) == "hostname" {
+			hostname, _ := os.Hostname()
+			text = strings.ReplaceAll(text, holder, hostname)
+		} else if value, ok := os.LookupEnv(kv[0]); ok {
+			text = strings.ReplaceAll(text, holder, value)
+		} else if kv[1] != "" {
+			text = strings.ReplaceAll(text, holder, kv[1])
+		}
+	}
+	return []byte(text)
 }
 
 // Marshal a map into Writer.
@@ -1906,6 +1945,9 @@ func (v *Viper) getKeyValueConfig() error {
 		return RemoteConfigError("No Remote Providers")
 	}
 
+	if v.kvstore == nil {
+		v.kvstore = make(map[string]interface{})
+	}
 	for _, rp := range v.remoteProviders {
 		val, err := v.getRemoteConfig(rp)
 		if err != nil {
@@ -1913,12 +1955,12 @@ func (v *Viper) getKeyValueConfig() error {
 
 			continue
 		}
+		rp.kv = val
 
-		v.kvstore = val
-
-		return nil
+		insensitiviseMap(val)
+		mergeMaps(val, v.kvstore, nil)
 	}
-	return RemoteConfigError("No Files Found")
+	return nil
 }
 
 func (v *Viper) getRemoteConfig(provider RemoteProvider) (map[string]interface{}, error) {
@@ -1926,8 +1968,9 @@ func (v *Viper) getRemoteConfig(provider RemoteProvider) (map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
-	err = v.unmarshalReader(reader, v.kvstore)
-	return v.kvstore, err
+	kv := make(map[string]interface{})
+	err = v.unmarshalReader(reader, kv)
+	return kv, err
 }
 
 // Retrieve the first found remote configuration.
@@ -1939,16 +1982,36 @@ func (v *Viper) watchKeyValueConfigOnChannel() error {
 	for _, rp := range v.remoteProviders {
 		respc, _ := RemoteConfig.WatchChannel(rp)
 		// Todo: Add quit channel
-		go func(rc <-chan *RemoteResponse) {
-			for {
-				b := <-rc
-				reader := bytes.NewReader(b.Value)
-				v.unmarshalReader(reader, v.kvstore)
-			}
-		}(respc)
-		return nil
+		go v.applyRemoteConfigChange(rp, respc)
 	}
 	return RemoteConfigError("No Files Found")
+}
+
+func (v *Viper) applyRemoteConfigChange(rrp *defaultRemoteProvider, rc <-chan *RemoteResponse) {
+	for {
+		b := <-rc
+		reader := bytes.NewReader(b.Value)
+		val := make(map[string]interface{})
+		v.unmarshalReader(reader, val)
+		rrp.kv = val
+		fmt.Println(rrp.Path(), "changed")
+		v.lock.Lock()
+		v.kvstore = make(map[string]interface{})
+		for _, rp := range v.remoteProviders {
+			if rp.kv != nil {
+				insensitiviseMap(rp.kv)
+				mergeMaps(rp.kv, v.kvstore, nil)
+			}
+		}
+		v.lock.Unlock()
+		if v.refreshEntrys != nil && len(v.refreshEntrys) > 0 {
+			for _, en := range v.refreshEntrys {
+				if _, ok := val[en.KeyName()]; ok {
+					decode(v.Get(en.KeyName()), defaultDecoderConfig(en))
+				}
+			}
+		}
+	}
 }
 
 // Retrieve the first found remote configuration.
