@@ -1,4 +1,4 @@
-module github.com/spf13/viper
+module github.com/Billyyoyo/xviper
 
 go 1.17
 
