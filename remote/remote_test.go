@@ -2,7 +2,7 @@ package remote
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
+	"github.com/billyyoyo/viper"
 	"regexp"
 	"strings"
 	"testing"
