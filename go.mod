@@ -1,4 +1,4 @@
-module github.com/Billyyoyo/xviper
+module github.com/billyyoyo/viper
 
 go 1.17
 
