@@ -8,6 +8,7 @@ package remote
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 
@@ -99,6 +100,9 @@ func getConfigManager(rp viper.RemoteProvider) (RemoteConfigManager, error) {
 
 	endpoints := strings.Split(rp.Endpoint(), ";")
 	username, password := rp.AuthInfo()
+	if InvokeConfigManager == nil {
+		return nil, errors.New("plug-in client not initial")
+	}
 	cm, err = InvokeConfigManager(endpoints, username, password)
 	if err != nil {
 		return nil, err
