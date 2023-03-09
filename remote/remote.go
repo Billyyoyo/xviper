@@ -9,15 +9,36 @@ package remote
 import (
 	"bytes"
 	"io"
-	"os"
 	"strings"
-
-	crypt "github.com/sagikazarmark/crypt/config"
 
 	"github.com/billyyoyo/viper"
 )
 
 type remoteConfigProvider struct{}
+
+type KVPair struct {
+	Key   string
+	Value []byte
+}
+
+type KVPairs []*KVPair
+
+type Response struct {
+	Value []byte
+	Error error
+}
+
+var InvokeConfigManager func(machines []string, username, password string) (RemoteConfigManager, error)
+
+type RemoteConfigManager interface {
+	Get(key string) ([]byte, error)
+	List(key string) (KVPairs, error)
+	Watch(key string, stop chan bool) <-chan *Response
+}
+
+func init() {
+	viper.RemoteConfig = &remoteConfigProvider{}
+}
 
 func (rc remoteConfigProvider) Get(rp viper.RemoteProvider) (io.Reader, error) {
 	cm, err := getConfigManager(rp)
@@ -54,7 +75,7 @@ func (rc remoteConfigProvider) WatchChannel(rp viper.RemoteProvider) (<-chan *vi
 	viperResponsCh := make(chan *viper.RemoteResponse)
 	cryptoResponseCh := cm.Watch(rp.Path(), quit)
 	// need this function to convert the Channel response form crypt.Response to viper.Response
-	go func(cr <-chan *crypt.Response, vr chan<- *viper.RemoteResponse, quitwc <-chan bool, quit chan<- bool) {
+	go func(cr <-chan *Response, vr chan<- *viper.RemoteResponse, quitwc <-chan bool, quit chan<- bool) {
 		for {
 			select {
 			case <-quitwc:
@@ -72,46 +93,15 @@ func (rc remoteConfigProvider) WatchChannel(rp viper.RemoteProvider) (<-chan *vi
 	return viperResponsCh, quitwc
 }
 
-func getConfigManager(rp viper.RemoteProvider) (crypt.ConfigManager, error) {
-	var cm crypt.ConfigManager
+func getConfigManager(rp viper.RemoteProvider) (RemoteConfigManager, error) {
+	var cm RemoteConfigManager
 	var err error
 
 	endpoints := strings.Split(rp.Endpoint(), ";")
-	if rp.SecretKeyring() != "" {
-		var kr *os.File
-		kr, err = os.Open(rp.SecretKeyring())
-		if err != nil {
-			return nil, err
-		}
-		defer kr.Close()
-		switch rp.Provider() {
-		case "etcd":
-			cm, err = crypt.NewEtcdConfigManager(endpoints, kr)
-		case "etcd3":
-			cm, err = crypt.NewEtcdV3ConfigManager(endpoints, kr)
-		case "firestore":
-			cm, err = crypt.NewFirestoreConfigManager(endpoints, kr)
-		default:
-			cm, err = crypt.NewConsulConfigManager(endpoints, kr)
-		}
-	} else {
-		switch rp.Provider() {
-		case "etcd":
-			cm, err = crypt.NewStandardEtcdConfigManager(endpoints)
-		case "etcd3":
-			cm, err = crypt.NewStandardEtcdV3ConfigManager(endpoints)
-		case "firestore":
-			cm, err = crypt.NewStandardFirestoreConfigManager(endpoints)
-		default:
-			cm, err = crypt.NewStandardConsulConfigManager(endpoints)
-		}
-	}
+	username, password := rp.AuthInfo()
+	cm, err = InvokeConfigManager(endpoints, username, password)
 	if err != nil {
 		return nil, err
 	}
 	return cm, nil
-}
-
-func init() {
-	viper.RemoteConfig = &remoteConfigProvider{}
 }

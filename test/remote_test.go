@@ -1,8 +1,9 @@
-package remote
+package test
 
 import (
 	"fmt"
 	"github.com/billyyoyo/viper"
+	_ "github.com/billyyoyo/viper/config/etcd"
 	"regexp"
 	"strings"
 	"testing"
@@ -49,8 +50,8 @@ func (w UploadConfig) KeyName() string {
 
 func TestRemoteConfig(t *testing.T) {
 	v := viper.New()
-	v.AddRemoteProvider("etcd3", "http://127.0.0.1:2379", "/configs/log.yml")
-	v.AddRemoteProvider("etcd3", "http://127.0.0.1:2379", "/configs/upload.yml")
+	v.AddRemoteProvider("etcd3", "http://127.0.0.1:2379", "/configs/log.yml", "", "")
+	v.AddRemoteProvider("etcd3", "http://127.0.0.1:2379", "/configs/upload.yml", "", "")
 	v.SetConfigType("yaml") // because there is no file extension in a stream of bytes, supported extensions are "json", "toml", "yaml", "yml", "properties", "props", "prop", "env", "dotenv"
 	err := v.ReadRemoteConfig()
 	if err != nil {

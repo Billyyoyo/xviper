@@ -397,11 +397,12 @@ func (v *Viper) resetEncoding() {
 }
 
 type defaultRemoteProvider struct {
-	provider      string
-	endpoint      string
-	path          string
-	secretKeyring string
-	kv            map[string]interface{}
+	provider string
+	endpoint string
+	path     string
+	username string
+	password string
+	kv       map[string]interface{}
 }
 
 func (rp defaultRemoteProvider) Provider() string {
@@ -416,8 +417,8 @@ func (rp defaultRemoteProvider) Path() string {
 	return rp.path
 }
 
-func (rp defaultRemoteProvider) SecretKeyring() string {
-	return rp.secretKeyring
+func (rp defaultRemoteProvider) AuthInfo() (string, string) {
+	return rp.username, rp.password
 }
 
 // RemoteProvider stores the configuration necessary
@@ -428,7 +429,7 @@ type RemoteProvider interface {
 	Provider() string
 	Endpoint() string
 	Path() string
-	SecretKeyring() string
+	AuthInfo() (string, string)
 }
 
 // SupportedExts are universally supported extensions.
@@ -598,11 +599,11 @@ func (v *Viper) AddConfigPath(in string) {
 // To retrieve a config file called myapp.json from /configs/myapp.json
 // you should set path to /configs and set config name (SetConfigName()) to
 // "myapp"
-func AddRemoteProvider(provider, endpoint, path string) error {
-	return v.AddRemoteProvider(provider, endpoint, path)
+func AddRemoteProvider(provider, endpoint, path, username, password string) error {
+	return v.AddRemoteProvider(provider, endpoint, path, username, password)
 }
 
-func (v *Viper) AddRemoteProvider(provider, endpoint, path string) error {
+func (v *Viper) AddRemoteProvider(provider, endpoint, path, username, password string) error {
 	if !stringInSlice(provider, SupportedRemoteProviders) {
 		return UnsupportedRemoteProviderError(provider)
 	}
@@ -613,40 +614,8 @@ func (v *Viper) AddRemoteProvider(provider, endpoint, path string) error {
 			endpoint: endpoint,
 			provider: provider,
 			path:     path,
-		}
-		if !v.providerPathExists(rp) {
-			v.remoteProviders = append(v.remoteProviders, rp)
-		}
-	}
-	return nil
-}
-
-// AddSecureRemoteProvider adds a remote configuration source.
-// Secure Remote Providers are searched in the order they are added.
-// provider is a string value: "etcd", "etcd3", "consul" or "firestore" are currently supported.
-// endpoint is the url.  etcd requires http://ip:port  consul requires ip:port
-// secretkeyring is the filepath to your openpgp secret keyring.  e.g. /etc/secrets/myring.gpg
-// path is the path in the k/v store to retrieve configuration
-// To retrieve a config file called myapp.json from /configs/myapp.json
-// you should set path to /configs and set config name (SetConfigName()) to
-// "myapp"
-// Secure Remote Providers are implemented with github.com/bketelsen/crypt
-func AddSecureRemoteProvider(provider, endpoint, path, secretkeyring string) error {
-	return v.AddSecureRemoteProvider(provider, endpoint, path, secretkeyring)
-}
-
-func (v *Viper) AddSecureRemoteProvider(provider, endpoint, path, secretkeyring string) error {
-	if !stringInSlice(provider, SupportedRemoteProviders) {
-		return UnsupportedRemoteProviderError(provider)
-	}
-	if provider != "" && endpoint != "" {
-		v.logger.Info("adding remote provider", "provider", provider, "endpoint", endpoint)
-
-		rp := &defaultRemoteProvider{
-			endpoint:      endpoint,
-			provider:      provider,
-			path:          path,
-			secretKeyring: secretkeyring,
+			username: username,
+			password: password,
 		}
 		if !v.providerPathExists(rp) {
 			v.remoteProviders = append(v.remoteProviders, rp)
