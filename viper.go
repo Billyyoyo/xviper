@@ -1732,7 +1732,7 @@ func (v *Viper) handlePlaceHolder(bs []byte) []byte {
 			text = strings.ReplaceAll(text, holder, hostname)
 		} else if value, ok := os.LookupEnv(kv[0]); ok {
 			text = strings.ReplaceAll(text, holder, value)
-		} else if kv[1] != "" {
+		} else if len(kv) > 0 && kv[1] != "" {
 			text = strings.ReplaceAll(text, holder, kv[1])
 		}
 	}

@@ -3,7 +3,7 @@ package test
 import (
 	"fmt"
 	"github.com/billyyoyo/viper"
-	//_ "github.com/billyyoyo/viper/config/etcd"
+	//_ "github.com/billyyoyo/viper-plugins/etcd"
 	"regexp"
 	"strings"
 	"testing"
