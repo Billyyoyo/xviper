@@ -85,10 +85,10 @@ keys:
 	- /configs/upload.yml
 	- /configs/log.yml
 user: ${ETCD_USER:ro:ot}sdf
-pwd: ${ETCD_PWD:ro:ot}sdf
+pwd: ${ETCD_PWD:ro-ot}sdf
 refresh: true
 `
-	reg := "\\$\\{[a-zA-Z_.:]+\\}"
+	reg := "\\$\\{[a-zA-Z_.:-]+\\}"
 	exp, err := regexp.Compile(reg)
 	if err != nil {
 		fmt.Println(err.Error())
