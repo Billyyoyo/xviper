@@ -62,7 +62,7 @@ func (e ConfigMarshalError) Error() string {
 }
 
 const (
-	PLACEHOLDER = "\\$\\{[a-zA-Z.]+\\}"
+	PLACEHOLDER = "\\$\\{[a-zA-Z_.:]+\\}"
 )
 
 var v *Viper

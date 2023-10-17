@@ -80,7 +80,7 @@ config:
 remote:
 enable: true
 provider: etcd3
-host: http://localhost:2379
+host: http://${REGISTRY.HOST:localhost}:2379
 keys:
 	- /configs/upload.yml
 	- /configs/log.yml
@@ -88,8 +88,7 @@ user: ${ETCD_USER:ro:ot}sdf
 pwd: ${ETCD_PWD:ro:ot}sdf
 refresh: true
 `
-	//reg := "$\\{{.}+\\}"
-	reg := "\\$\\{(.)+\\}"
+	reg := "\\$\\{[a-zA-Z_.:]+\\}"
 	exp, err := regexp.Compile(reg)
 	if err != nil {
 		fmt.Println(err.Error())
