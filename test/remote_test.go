@@ -76,19 +76,24 @@ func TestRemoteConfig(t *testing.T) {
 
 func TestReg(t *testing.T) {
 	text := `
-config:
-remote:
-enable: true
-provider: etcd3
-host: http://${REGISTRY.HOST:localhost}:2379
-keys:
-	- /configs/upload.yml
-	- /configs/log.yml
-user: ${ETCD_USER:ro:ot}sdf
-pwd: ${ETCD_PWD:ro-ot}sdf
-refresh: true
+dataSource:
+  host: ${MYSQL_HOST:im.flyee.fun}
+  port: ${MYSQL_PORT:3306}
+  db: ${MYSQL_DB:jim}
+  user: ${MYSQL_USER:root}
+  password: ${MYSQL_PWD:hanjing}
+  url: ${db.user}:${db.password}@tcp(${db.host}:${db.port})/${db.db}?charset=utf8&parseTime=True&loc=Local
+  ddl: true
+  debug: true
+  slowSqlThreshold: 1000 # second
+  tableNamePrefix: "im_"
+  pool:
+    maxOpenConns: 16
+    maxIdleConns: 4
+    connMaxLifeTime: 3600 #second
+    connMaxIdleTime: 600 #second
 `
-	reg := "\\$\\{[a-zA-Z_.:-]+\\}"
+	reg := "\\$\\{[0-9a-zA-Z_.:-]+\\}"
 	exp, err := regexp.Compile(reg)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -98,6 +103,6 @@ refresh: true
 	for _, s := range strs {
 		s = s[2 : len(s)-1]
 		kv := strings.SplitN(s, ":", 2)
-		fmt.Println(kv[0], kv[1])
+		fmt.Printf("%+v\n", kv)
 	}
 }
